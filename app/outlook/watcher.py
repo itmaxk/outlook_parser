@@ -73,7 +73,7 @@ def _watcher_loop():
                     outlook, namespace = _connect_outlook()
                     _handler_ref = outlook
                 except Exception:
-                    logger.warning("Cannot connect to Outlook, retrying in 30s...")
+                    logger.warning("Cannot connect to Outlook, retrying in 30s...", exc_info=True)
                     _stop_event.wait(30)
                     continue
 
