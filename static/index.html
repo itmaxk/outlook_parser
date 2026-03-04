@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Outlook Parser</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+.container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+h1 { margin-bottom: 20px; font-size: 1.5rem; }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
+.tab { padding: 10px 24px; cursor: pointer; border: none; background: none; font-size: 1rem; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+.tab.active { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: 600; }
+
+/* Cards & tables */
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 20px; margin-bottom: 16px; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; }
+th { background: #fafafa; font-weight: 600; position: sticky; top: 0; }
+tr:hover { background: #f9f9f9; }
+
+/* Buttons */
+.btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: .9rem; }
+.btn-primary { background: #1a73e8; color: #fff; }
+.btn-primary:hover { background: #1557b0; }
+.btn-danger { background: #d93025; color: #fff; }
+.btn-danger:hover { background: #b3261e; }
+.btn-sm { padding: 4px 10px; font-size: .8rem; }
+.btn-icon { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 2px 6px; }
+
+/* Toolbar */
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+.filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.filters select, .filters input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: .85rem; }
+
+/* Badge */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: .75rem; font-weight: 600; }
+.badge-yes { background: #e6f4ea; color: #137333; }
+.badge-no { background: #fce8e6; color: #c5221f; }
+.badge-on { background: #e8f0fe; color: #1a73e8; }
+.badge-off { background: #f1f3f4; color: #80868b; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; justify-content: center; align-items: flex-start; padding-top: 60px; }
+.modal-overlay.open { display: flex; }
+.modal { background: #fff; border-radius: 10px; width: 680px; max-height: 80vh; overflow-y: auto; padding: 24px; }
+.modal h2 { margin-bottom: 16px; font-size: 1.2rem; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; margin-bottom: 4px; font-weight: 600; font-size: .85rem; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: .9rem; }
+.form-group textarea { resize: vertical; min-height: 60px; }
+.form-row { display: flex; gap: 10px; }
+.form-row > * { flex: 1; }
+.form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+/* Conditions block */
+.conditions { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+.conditions h3 { font-size: .95rem; margin-bottom: 10px; }
+.cond-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.cond-row select, .cond-row input { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: .85rem; }
+.cond-row select { width: 130px; }
+.cond-row input[type="text"] { flex: 1; min-width: 140px; }
+.cond-row label.cb { display: flex; align-items: center; gap: 4px; font-size: .8rem; white-space: nowrap; }
+
+/* Status */
+.status-bar { font-size: .8rem; color: #666; margin-top: 8px; }
+
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Outlook Parser</h1>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="rules">Правила</button>
+    <button class="tab" data-tab="logs">Логи</button>
+  </div>
+
+  <!-- Rules Tab -->
+  <div id="tab-rules">
+    <div class="toolbar">
+      <button class="btn btn-primary" id="btn-add-rule">+ Новое правило</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Приоритет</th>
+            <th>Имя</th>
+            <th>Условия</th>
+            <th>Действие</th>
+            <th>Активно</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rules-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Logs Tab -->
+  <div id="tab-logs" class="hidden">
+    <div class="toolbar">
+      <div class="filters">
+        <select id="log-filter-matched">
+          <option value="">Все</option>
+          <option value="true">Совпало</option>
+          <option value="false">Не совпало</option>
+        </select>
+        <button class="btn btn-sm btn-primary" id="btn-refresh-logs">Обновить</button>
+      </div>
+      <button class="btn btn-sm btn-danger" id="btn-clear-logs">Очистить логи</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Время</th>
+            <th>Тема</th>
+            <th>Отправитель</th>
+            <th>Правило</th>
+            <th>Совпало</th>
+            <th>URL</th>
+            <th>HTTP</th>
+            <th>Ошибка</th>
+          </tr>
+        </thead>
+        <tbody id="logs-body"></tbody>
+      </table>
+    </div>
+    <div class="status-bar" id="logs-status"></div>
+  </div>
+</div>
+
+<!-- Rule Modal -->
+<div class="modal-overlay" id="rule-modal">
+  <div class="modal">
+    <h2 id="modal-title">Новое правило</h2>
+    <form id="rule-form">
+      <input type="hidden" id="rule-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Имя</label>
+          <input type="text" id="rule-name" required>
+        </div>
+        <div class="form-group" style="max-width:100px">
+          <label>Приоритет</label>
+          <input type="number" id="rule-priority" value="0">
+        </div>
+        <div class="form-group" style="max-width:100px">
+          <label>Активно</label>
+          <select id="rule-enabled">
+            <option value="true">Да</option>
+            <option value="false">Нет</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="conditions">
+        <h3>Условия (AND)</h3>
+        <div id="conditions-list"></div>
+        <button type="button" class="btn btn-sm btn-primary" id="btn-add-condition">+ Условие</button>
+      </div>
+
+      <div class="form-group">
+        <label>URL действия (шаблон с {переменными})</label>
+        <input type="text" id="rule-action-url" required placeholder="http://localhost:3004/process/{ID}">
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="max-width:120px">
+          <label>Метод</label>
+          <select id="rule-action-method">
+            <option>GET</option>
+            <option>POST</option>
+            <option>PUT</option>
+            <option>PATCH</option>
+            <option>DELETE</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Тело запроса (необязательно)</label>
+          <textarea id="rule-action-body" rows="2"></textarea>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn" id="btn-cancel-rule">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const API = '';
+
+// --- Tabs ---
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-rules').classList.toggle('hidden', tab.dataset.tab !== 'rules');
+    document.getElementById('tab-logs').classList.toggle('hidden', tab.dataset.tab !== 'logs');
+    if (tab.dataset.tab === 'logs') loadLogs();
+  });
+});
+
+// --- Rules ---
+async function loadRules() {
+  const res = await fetch(API + '/api/rules');
+  const rules = await res.json();
+  const tbody = document.getElementById('rules-body');
+  tbody.innerHTML = rules.map(r => `
+    <tr>
+      <td>${r.priority}</td>
+      <td>${esc(r.name)}</td>
+      <td>${r.conditions.map(c => `<small>${esc(c.field)} ${esc(c.operator)} "${esc(c.value)}"</small>`).join('<br>')}</td>
+      <td><small>${r.action_method} ${esc(r.action_url)}</small></td>
+      <td><span class="badge ${r.enabled ? 'badge-on' : 'badge-off'}">${r.enabled ? 'Да' : 'Нет'}</span></td>
+      <td>
+        <button class="btn-icon" title="Редактировать" onclick="editRule(${r.id})">&#9998;</button>
+        <button class="btn-icon" title="Удалить" onclick="deleteRule(${r.id})">&#128465;</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function editRule(id) {
+  const res = await fetch(API + '/api/rules/' + id);
+  const r = await res.json();
+  document.getElementById('modal-title').textContent = 'Редактировать правило';
+  document.getElementById('rule-id').value = r.id;
+  document.getElementById('rule-name').value = r.name;
+  document.getElementById('rule-priority').value = r.priority;
+  document.getElementById('rule-enabled').value = String(r.enabled);
+  document.getElementById('rule-action-url').value = r.action_url;
+  document.getElementById('rule-action-method').value = r.action_method;
+  document.getElementById('rule-action-body').value = r.action_body || '';
+  renderConditions(r.conditions);
+  document.getElementById('rule-modal').classList.add('open');
+}
+
+async function deleteRule(id) {
+  if (!confirm('Удалить правило?')) return;
+  await fetch(API + '/api/rules/' + id, { method: 'DELETE' });
+  loadRules();
+}
+
+// --- Conditions ---
+let conditions = [];
+
+function renderConditions(conds) {
+  conditions = conds || [];
+  const list = document.getElementById('conditions-list');
+  list.innerHTML = conditions.map((c, i) => `
+    <div class="cond-row">
+      <select onchange="conditions[${i}].field=this.value">
+        ${['subject','body','sender','to','cc','importance','categories'].map(f =>
+          `<option value="${f}" ${c.field===f?'selected':''}>${f}</option>`
+        ).join('')}
+      </select>
+      <select onchange="conditions[${i}].operator=this.value">
+        ${['contains','not_contains','equals','starts_with','ends_with','regex','pattern'].map(o =>
+          `<option value="${o}" ${c.operator===o?'selected':''}>${o}</option>`
+        ).join('')}
+      </select>
+      <input type="text" value="${esc(c.value)}" onchange="conditions[${i}].value=this.value" placeholder="Значение / шаблон">
+      <label class="cb"><input type="checkbox" ${c.case_sensitive?'checked':''} onchange="conditions[${i}].case_sensitive=this.checked"> Aa</label>
+      <button type="button" class="btn-icon" onclick="removeCondition(${i})">&#10005;</button>
+    </div>
+  `).join('');
+}
+
+function removeCondition(i) {
+  conditions.splice(i, 1);
+  renderConditions(conditions);
+}
+
+document.getElementById('btn-add-condition').addEventListener('click', () => {
+  conditions.push({ field: 'subject', operator: 'contains', value: '', case_sensitive: false });
+  renderConditions(conditions);
+});
+
+// --- Modal ---
+document.getElementById('btn-add-rule').addEventListener('click', () => {
+  document.getElementById('modal-title').textContent = 'Новое правило';
+  document.getElementById('rule-form').reset();
+  document.getElementById('rule-id').value = '';
+  document.getElementById('rule-priority').value = '0';
+  document.getElementById('rule-enabled').value = 'true';
+  renderConditions([]);
+  document.getElementById('rule-modal').classList.add('open');
+});
+
+document.getElementById('btn-cancel-rule').addEventListener('click', () => {
+  document.getElementById('rule-modal').classList.remove('open');
+});
+
+document.getElementById('rule-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) document.getElementById('rule-modal').classList.remove('open');
+});
+
+document.getElementById('rule-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const id = document.getElementById('rule-id').value;
+  const payload = {
+    name: document.getElementById('rule-name').value,
+    priority: parseInt(document.getElementById('rule-priority').value) || 0,
+    enabled: document.getElementById('rule-enabled').value === 'true',
+    conditions: conditions,
+    action_url: document.getElementById('rule-action-url').value,
+    action_method: document.getElementById('rule-action-method').value,
+    action_body: document.getElementById('rule-action-body').value || null,
+  };
+
+  if (id) {
+    await fetch(API + '/api/rules/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } else {
+    await fetch(API + '/api/rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  document.getElementById('rule-modal').classList.remove('open');
+  loadRules();
+});
+
+// --- Logs ---
+async function loadLogs() {
+  const matched = document.getElementById('log-filter-matched').value;
+  let url = API + '/api/logs?limit=200';
+  if (matched) url += '&matched=' + matched;
+
+  const res = await fetch(url);
+  const logs = await res.json();
+  const tbody = document.getElementById('logs-body');
+  tbody.innerHTML = logs.map(l => `
+    <tr>
+      <td><small>${fmtDate(l.received_at)}</small></td>
+      <td>${esc(l.subject || '')}</td>
+      <td><small>${esc(l.sender || '')}</small></td>
+      <td><small>${esc(l.rule_name || '-')}</small></td>
+      <td><span class="badge ${l.matched ? 'badge-yes' : 'badge-no'}">${l.matched ? 'Да' : 'Нет'}</span></td>
+      <td><small>${esc(l.action_url || '-')}</small></td>
+      <td>${l.http_status || '-'}</td>
+      <td><small>${esc(l.error_message || '')}</small></td>
+    </tr>
+  `).join('');
+  document.getElementById('logs-status').textContent = 'Загружено: ' + logs.length + ' записей';
+}
+
+document.getElementById('btn-refresh-logs').addEventListener('click', loadLogs);
+document.getElementById('log-filter-matched').addEventListener('change', loadLogs);
+
+document.getElementById('btn-clear-logs').addEventListener('click', async () => {
+  if (!confirm('Очистить все логи?')) return;
+  await fetch(API + '/api/logs', { method: 'DELETE' });
+  loadLogs();
+});
+
+// Auto-refresh logs every 10s when tab is active
+setInterval(() => {
+  if (!document.getElementById('tab-logs').classList.contains('hidden')) loadLogs();
+}, 10000);
+
+// --- Helpers ---
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function fmtDate(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  return d.toLocaleString('ru-RU');
+}
+
+// Init
+loadRules();
+</script>
+</body>
+</html>
