@@ -10,16 +10,51 @@ class MatchResult:
     variables: dict[str, str] = field(default_factory=dict)
 
 
+VARIABLE_TYPE_MAP: dict[str, str] = {
+    "digits": r"\d+",
+    "d": r"\d+",
+    "alpha": r"[a-zA-Zа-яА-ЯЁё]+",
+    "a": r"[a-zA-Zа-яА-ЯЁё]+",
+    "word": r"\w+",
+    "w": r"\w+",
+    "any": r".+?",
+}
+
+
+def _resolve_var_regex(type_spec: str | None) -> str:
+    if not type_spec or type_spec.lower() == "any":
+        return r".+?"
+    key = type_spec.lower()
+    if key in VARIABLE_TYPE_MAP:
+        return VARIABLE_TYPE_MAP[key]
+    return type_spec
+
+
 def _pattern_to_regex(pattern: str) -> re.Pattern:
-    """Convert a pattern like 'Sonar {ID}' to a compiled regex with named groups."""
-    parts = re.split(r"\{(\w+)\}", pattern)
-    regex_parts: list[str] = []
-    for i, part in enumerate(parts):
-        if i % 2 == 0:
-            regex_parts.append(re.escape(part))
-        else:
-            regex_parts.append(f"(?P<{part}>.+?)")
-    return re.compile("^" + "".join(regex_parts) + "$")
+    """Convert a pattern like 'AI review {mr_id:digits}' to a compiled regex with named groups.
+
+    Supported variable types:
+      {name}        — any characters (default, same as {name:any})
+      {name:digits} — only digits  (\\d+)
+      {name:d}      — alias for digits
+      {name:word}   — word characters (\\w+)
+      {name:w}      — alias for word
+      {name:alpha}  — letters only (Latin + Cyrillic)
+      {name:a}      — alias for alpha
+      {name:any}    — any characters (.+?)
+      {name:<regex>} — custom regex pattern
+    """
+    result: list[str] = []
+    last_end = 0
+    for m in re.finditer(r"\{(\w+)(?::([^}]+))?\}", pattern):
+        result.append(re.escape(pattern[last_end:m.start()]))
+        var_name = m.group(1)
+        type_spec = m.group(2)
+        var_regex = _resolve_var_regex(type_spec)
+        result.append(f"(?P<{var_name}>{var_regex})")
+        last_end = m.end()
+    result.append(re.escape(pattern[last_end:]))
+    return re.compile("^" + "".join(result) + "$")
 
 
 def _get_field_value(email_data: dict[str, str], field_name: str) -> str:
@@ -52,10 +87,7 @@ def _check_condition(value: str, operator: str, pattern: str, case_sensitive: bo
     elif operator == "pattern":
         flags = 0 if case_sensitive else re.IGNORECASE
         compiled = _pattern_to_regex(pattern)
-        m = compiled.search(value if case_sensitive else _get_field_value({"_": value}, "_").lower() if False else value)
-        # Redo with proper flags
-        regex_str = compiled.pattern
-        m = re.search(regex_str, value, flags)
+        m = re.search(compiled.pattern, value, flags)
         if m:
             return MatchResult(matched=True, variables=m.groupdict())
         return MatchResult(matched=False)
