@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import logging
+import json
 from dataclasses import dataclass
 from typing import Optional
 
 import httpx
+
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +37,15 @@ async def execute_action(
     body = render_template(body_template, variables) if body_template else None
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.request(method, url, content=body)
+        async with httpx.AsyncClient(timeout=config.ACTION_TIMEOUT_SECONDS) as client:
+            request_kwargs = {}
+            if body:
+                try:
+                    request_kwargs["json"] = json.loads(body)
+                except json.JSONDecodeError:
+                    request_kwargs["content"] = body
+
+            response = await client.request(method, url, **request_kwargs)
             logger.info("Action %s %s -> %d", method, url, response.status_code)
             return ActionResult(url=url, status_code=response.status_code)
     except Exception as e:

@@ -29,6 +29,16 @@ def _save_log(log: ProcessingLog):
         session.close()
 
 
+def _build_action_variables(email_data: dict[str, str], extracted: dict[str, str]) -> dict[str, str]:
+    variables = {
+        key.upper(): value
+        for key, value in email_data.items()
+        if isinstance(value, str)
+    }
+    variables.update(extracted)
+    return variables
+
+
 async def _process_async(email_data: dict[str, str]):
     rules = _load_enabled_rules()
     entry_id = email_data.get("entry_id")
@@ -51,9 +61,10 @@ async def _process_async(email_data: dict[str, str]):
         if result.matched:
             matched_any = True
             logger.info("Rule '%s' matched email '%s', vars=%s", rule.name, subject, result.variables)
+            action_variables = _build_action_variables(email_data, result.variables)
 
             action_result = await execute_action(
-                rule.action_url, rule.action_method, rule.action_body, result.variables,
+                rule.action_url, rule.action_method, rule.action_body, action_variables,
             )
 
             _save_log(ProcessingLog(
@@ -62,7 +73,7 @@ async def _process_async(email_data: dict[str, str]):
                 action_url=action_result.url,
                 http_status=action_result.status_code,
                 error_message=action_result.error,
-                raw_vars=json.dumps(result.variables, ensure_ascii=False) if result.variables else None,
+                raw_vars=json.dumps(action_variables, ensure_ascii=False) if action_variables else None,
             ))
 
     if not matched_any:
