@@ -27,6 +27,33 @@ def test_build_action_variables_adds_email_fields_and_keeps_extracted_vars():
     assert variables["MR_ID"] == "123"
 
 
+def test_build_action_variables_infers_mr_input_from_subject_when_missing():
+    variables = _build_action_variables(
+        {
+            "sender": "author@example.com",
+            "subject": "AI review 123",
+            "body": "",
+        },
+        {},
+    )
+
+    assert variables["MR_INPUT"] == "123"
+
+
+def test_build_action_variables_infers_mr_input_url_from_body_when_missing():
+    mr_url = "https://gitlab.example.com/team/project/-/merge_requests/456"
+    variables = _build_action_variables(
+        {
+            "sender": "author@example.com",
+            "subject": "review",
+            "body": f"Please review {mr_url}.",
+        },
+        {},
+    )
+
+    assert variables["MR_INPUT"] == mr_url
+
+
 def test_execute_action_sends_valid_json_body_as_json(monkeypatch):
     captured = {}
 
@@ -64,6 +91,35 @@ def test_execute_action_sends_valid_json_body_as_json(monkeypatch):
     assert captured["kwargs"] == {
         "json": {"recipients": ["author@example.com"], "mr_input": "123"}
     }
+
+
+def test_execute_action_reports_unresolved_template_variables(monkeypatch):
+    async def fail_request(*args, **kwargs):
+        raise AssertionError("request should not be sent")
+
+    class Client:
+        def __init__(self, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        request = fail_request
+
+    monkeypatch.setattr(actions.httpx, "AsyncClient", Client)
+
+    result = asyncio.run(actions.execute_action(
+        "http://localhost/api/review/run-and-send-email",
+        "POST",
+        '{"mr_input":"{MR_INPUT}"}',
+        {},
+    ))
+
+    assert result.status_code is None
+    assert result.error == "Unresolved template variables: {MR_INPUT}"
 
 
 def test_parse_json_body_accepts_escaped_json_from_curl():

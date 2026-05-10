@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -10,6 +11,8 @@ import httpx
 import config
 
 logger = logging.getLogger(__name__)
+
+PLACEHOLDER_RE = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}")
 
 
 @dataclass
@@ -44,6 +47,14 @@ def _parse_json_body(body: str):
     return parsed
 
 
+def _unresolved_placeholders(*values: Optional[str]) -> list[str]:
+    placeholders: set[str] = set()
+    for value in values:
+        if value:
+            placeholders.update(PLACEHOLDER_RE.findall(value))
+    return sorted(placeholders)
+
+
 async def execute_action(
     url_template: str,
     method: str,
@@ -52,6 +63,12 @@ async def execute_action(
 ) -> ActionResult:
     url = render_template(url_template, variables)
     body = render_template(body_template, variables) if body_template else None
+    unresolved = _unresolved_placeholders(url, body)
+    if unresolved:
+        return ActionResult(
+            url=url,
+            error="Unresolved template variables: " + ", ".join(unresolved),
+        )
 
     try:
         async with httpx.AsyncClient(timeout=config.ACTION_TIMEOUT_SECONDS) as client:

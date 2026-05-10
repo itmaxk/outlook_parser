@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 
 from app.db import SessionLocal
 from app.models import Rule, ProcessingLog
@@ -10,6 +11,12 @@ from app.engine.matcher import match_rule
 from app.engine.actions import execute_action
 
 logger = logging.getLogger(__name__)
+
+MR_URL_RE = re.compile(r"https?://\S+/-/merge_requests/\d+\S*", re.IGNORECASE)
+MR_IID_RE = re.compile(
+    r"(?:\bmr\b|\bmerge\s+request\b|!|ai\s+review)\D*(\d+)",
+    re.IGNORECASE,
+)
 
 
 def _load_enabled_rules() -> list[Rule]:
@@ -29,6 +36,23 @@ def _save_log(log: ProcessingLog):
         session.close()
 
 
+def _infer_mr_input(email_data: dict[str, str]) -> str:
+    text = "\n".join(
+        email_data.get(field, "")
+        for field in ("subject", "body")
+        if email_data.get(field)
+    )
+    url_match = MR_URL_RE.search(text)
+    if url_match:
+        return url_match.group(0).rstrip(".,;)")
+
+    iid_match = MR_IID_RE.search(text)
+    if iid_match:
+        return iid_match.group(1)
+
+    return ""
+
+
 def _build_action_variables(email_data: dict[str, str], extracted: dict[str, str]) -> dict[str, str]:
     variables = {
         key.upper(): value
@@ -36,6 +60,10 @@ def _build_action_variables(email_data: dict[str, str], extracted: dict[str, str
         if isinstance(value, str)
     }
     variables.update(extracted)
+    if not variables.get("MR_INPUT"):
+        mr_input = _infer_mr_input(email_data)
+        if mr_input:
+            variables["MR_INPUT"] = mr_input
     return variables
 
 
