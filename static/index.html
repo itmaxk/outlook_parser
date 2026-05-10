@@ -990,65 +990,98 @@ let conditions = [];
 function renderConditions(conds) {
   conditions = conds || [];
   const list = document.getElementById('conditions-list');
-  list.innerHTML = conditions.map((c, i) => {
+  list.innerHTML = '';
+  conditions.forEach((c, i) => {
     const isPattern = c.operator === 'pattern';
     const isRegex = c.operator === 'regex';
-    const placeholder = isPattern ? 'AI review {mr_id:digits}' : (isRegex ? 'Регулярное выражение...' : 'Значение / шаблон');
-    return `
-    <div class="cond-row">
-      <select onchange="conditions[${i}].field=this.value">
-        ${['subject','body','sender','to','cc','importance','categories'].map(f =>
-          `<option value="${f}" ${c.field===f?'selected':''}>${f}</option>`
-        ).join('')}
-      </select>
-      <select onchange="conditions[${i}].operator=this.value; renderConditions(conditions)">
-        ${['contains','not_contains','equals','starts_with','ends_with','regex','pattern'].map(o =>
-          `<option value="${o}" ${c.operator===o?'selected':''}>${o}</option>`
-        ).join('')}
-      </select>
-      <input type="text" value="${esc(c.value)}" oninput="conditions[${i}].value=this.value" placeholder="${placeholder}">
-      <label class="cb"><input type="checkbox" ${c.case_sensitive?'checked':''} onchange="conditions[${i}].case_sensitive=this.checked"> Aa</label>
-      <button type="button" class="btn-icon" onclick="removeCondition(${i})">&#10005;</button>
-    </div>
-    ${isPattern ? `
-    <div class="pattern-hint">
-      <small>Шаблон: <code>{имя}</code> — любые символы &nbsp;·&nbsp; <code>{имя:digits}</code> — только цифры &nbsp;·&nbsp; <code>{имя:word}</code> — буквы/цифры/_ &nbsp;·&nbsp; <code>{имя:alpha}</code> — только буквы &nbsp;·&nbsp; <code>{имя:&lt;regex&gt;}</code> — своё выражение</small>
-      <div class="pattern-types">
-        <button type="button" onclick="insertVarType(${i}, 'digits')">:digits</button>
-        <button type="button" onclick="insertVarType(${i}, 'word')">:word</button>
-        <button type="button" onclick="insertVarType(${i}, 'alpha')">:alpha</button>
-        <button type="button" onclick="insertVarType(${i}, 'any')">:any</button>
-      </div>
-    </div>
-    ` : ''}
-  `;
-  }).join('');
+    const placeholder = isPattern ? 'AI review {mr_id:digits}' : (isRegex ? '\u0420\u0435\u0433\u0443\u043b\u044f\u0440\u043d\u043e\u0435 \u0432\u044b\u0440\u0430\u0436\u0435\u043d\u0438\u0435...' : '\u0417\u043d\u0430\u0447\u0435\u043d\u0438\u0435 / \u0448\u0430\u0431\u043b\u043e\u043d');
+
+    const row = document.createElement('div');
+    row.className = 'cond-row';
+
+    const selField = document.createElement('select');
+    selField.innerHTML = ['subject','body','sender','to','cc','importance','categories']
+      .map(f => '<option value="'+f+'"'+(c.field===f?' selected':'')+'>'+f+'</option>').join('');
+    selField.addEventListener('change', function() { conditions[i].field = this.value; });
+
+    const selOp = document.createElement('select');
+    selOp.innerHTML = ['contains','not_contains','equals','starts_with','ends_with','regex','pattern']
+      .map(o => '<option value="'+o+'"'+(c.operator===o?' selected':'')+'>'+o+'</option>').join('');
+    selOp.addEventListener('change', function() { conditions[i].operator = this.value; renderConditions(conditions); });
+
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = c.value;
+    inp.placeholder = placeholder;
+    inp.addEventListener('input', function() { conditions[i].value = this.value; });
+
+    const lbl = document.createElement('label');
+    lbl.className = 'cb';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.checked = c.case_sensitive;
+    chk.style.accentColor = '#6366f1';
+    chk.addEventListener('change', function() { conditions[i].case_sensitive = this.checked; });
+    lbl.appendChild(chk);
+    lbl.appendChild(document.createTextNode(' Aa'));
+
+    const btnDel = document.createElement('button');
+    btnDel.type = 'button';
+    btnDel.className = 'btn-icon';
+    btnDel.innerHTML = '\u2715';
+    btnDel.addEventListener('click', function() { removeCondition(i); });
+
+    row.appendChild(selField);
+    row.appendChild(selOp);
+    row.appendChild(inp);
+    row.appendChild(lbl);
+    row.appendChild(btnDel);
+    list.appendChild(row);
+
+    if (isPattern) {
+      const hint = document.createElement('div');
+      hint.className = 'pattern-hint';
+      hint.innerHTML = '<small>\u0428\u0430\u0431\u043b\u043e\u043d: <code>{\u0438\u043c\u044f}</code> \u2014 \u043b\u044e\u0431\u044b\u0435 \u0441\u0438\u043c\u0432\u043e\u043b\u044b &nbsp;\u00b7&nbsp; <code>{\u0438\u043c\u044f:digits}</code> \u2014 \u0442\u043e\u043b\u044c\u043a\u043e \u0446\u0438\u0444\u0440\u044b &nbsp;\u00b7&nbsp; <code>{\u0438\u043c\u044f:word}</code> \u2014 \u0431\u0443\u043a\u0432\u044b/\u0446\u0438\u0444\u0440\u044b/_ &nbsp;\u00b7&nbsp; <code>{\u0438\u043c\u044f:alpha}</code> \u2014 \u0442\u043e\u043b\u044c\u043a\u043e \u0431\u0443\u043a\u0432\u044b &nbsp;\u00b7&nbsp; <code>{\u0438\u043c\u044f:&lt;regex&gt;}</code> \u2014 \u0441\u0432\u043e\u0451 \u0432\u044b\u0440\u0430\u0436\u0435\u043d\u0438\u0435</small>';
+      const btns = document.createElement('div');
+      btns.className = 'pattern-types';
+      ['digits','word','alpha','any'].forEach(ts => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = ':' + ts;
+        b.addEventListener('click', function() { insertVarType(i, ts); });
+        btns.appendChild(b);
+      });
+      hint.appendChild(btns);
+      list.appendChild(hint);
+    }
+  });
 }
 
 function insertVarType(condIndex, typeSpec) {
-  const input = document.querySelectorAll('.cond-row input[type="text"]')[condIndex];
+  const inputs = document.querySelectorAll('#conditions-list .cond-row input[type="text"]');
+  const input = inputs[condIndex];
   if (!input) return;
   const pos = input.selectionStart || input.value.length;
   const val = input.value;
-  const colon = typeSpec ? ':' + typeSpec : '';
-  let insertText = '{var' + colon + '}';
+  const colon = ':' + typeSpec;
   const beforeCursor = val.substring(0, pos);
   const varMatch = beforeCursor.match(/\{(\w*)(?::(\w*))?$/);
+  let newText, newPos;
   if (varMatch) {
     const varStart = pos - varMatch[0].length;
     const varName = varMatch[1] || 'var';
-    insertText = '{' + varName + colon + '}';
-    conditions[condIndex].value = val.substring(0, varStart) + insertText + val.substring(pos);
-    input.value = conditions[condIndex].value;
-    const newPos = varStart + insertText.length;
-    input.setSelectionRange(newPos, newPos);
+    const insertText = '{' + varName + colon + '}';
+    newText = val.substring(0, varStart) + insertText + val.substring(pos);
+    newPos = varStart + insertText.length;
   } else {
-    conditions[condIndex].value = val.substring(0, pos) + insertText + val.substring(pos);
-    input.value = conditions[condIndex].value;
-    const newPos = pos + insertText.length;
-    input.setSelectionRange(newPos, newPos);
+    const insertText = '{var' + colon + '}';
+    newText = val.substring(0, pos) + insertText + val.substring(pos);
+    newPos = pos + insertText.length;
   }
+  conditions[condIndex].value = newText;
+  input.value = newText;
   input.focus();
+  input.setSelectionRange(newPos, newPos);
 }
 
 function removeCondition(i) {
